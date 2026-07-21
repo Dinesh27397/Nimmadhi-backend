@@ -1,0 +1,288 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                       String          @id @default(uuid())
+  mobile                   String          @unique
+  fullName                 String?
+  email                    String?         @unique
+  preferredLanguage        String          @default("en")
+  monthlyIncome            Decimal?        @db.Decimal(14, 2)
+  monthlyEssentialExpenses Decimal?        @db.Decimal(14, 2)
+  employmentType           EmploymentType?
+  existingEmiTotal         Decimal?        @db.Decimal(14, 2)
+  hasCreditCardDues        Boolean         @default(false)
+  creditCardDueAmount      Decimal?        @db.Decimal(14, 2)
+  emergencyFund            Decimal?        @db.Decimal(14, 2)
+  pinHash                  String?
+  isVerified               Boolean         @default(false)
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  otpRequests               OtpRequest[]
+  refreshTokens             RefreshToken[]
+  auditLogs                 AuditLog[]
+  loans                     Loan[]
+  transactions              Transaction[]
+  smsImports                SmsImportCandidate[]
+  emailConnections          EmailConnection[]
+  paymentReminderPreference PaymentReminderPreference?
+  loanReminderPreferences   LoanReminderPreference[]
+}
+
+enum LoanType {
+  HOME_LOAN
+  PERSONAL_LOAN
+  VEHICLE_LOAN
+  GOLD_LOAN
+  CREDIT_CARD
+  EDUCATION_LOAN
+  KADAN
+  OTHER
+}
+
+enum EmploymentType {
+  SALARIED
+  SELF_EMPLOYED
+  BUSINESS
+  STUDENT
+  HOMEMAKER
+  RETIRED
+  OTHER
+}
+
+model Loan {
+  id                    String   @id @default(uuid())
+  userId                String
+  loanName              String
+  loanType              LoanType
+  lenderName            String?
+  outstandingAmount     Decimal  @db.Decimal(14, 2)
+  monthlyEmi            Decimal  @db.Decimal(14, 2)
+  interestRate          Decimal  @db.Decimal(5, 2)
+  dueDay                Int
+  tenureRemainingMonths Int?
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user               User                    @relation(fields: [userId], references: [id])
+  transactions       Transaction[]
+  reminderPreference LoanReminderPreference?
+}
+
+model PaymentReminderPreference {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  enabled        Boolean  @default(true)
+  daysBefore     Int[]    @default([7, 3, 1])
+  reminderHour   Int      @default(9)
+  reminderMinute Int      @default(0)
+  overdueEnabled Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LoanReminderPreference {
+  id        String   @id @default(uuid())
+  userId    String
+  loanId    String   @unique
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum TransactionType {
+  EMI
+  PAYMENT
+  REFUND
+}
+
+enum TransactionCategory {
+  LOAN
+  SHOPPING
+  FUEL
+  FOOD
+  UTILITIES
+  HEALTHCARE
+  TRANSPORT
+  ENTERTAINMENT
+  CASHBACK
+  OTHER
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum TransactionSource {
+  MANUAL
+  SMS
+  EMAIL
+  SYSTEM
+}
+
+enum SmsImportReviewStatus {
+  PENDING
+  AUTO_IMPORTED
+  APPROVED
+  IGNORED
+}
+
+enum EmailProvider {
+  GMAIL
+  OUTLOOK
+}
+
+enum EmailConnectionStatus {
+  PENDING
+  CONNECTED
+  ERROR
+}
+
+model Transaction {
+  id                    String              @id @default(uuid())
+  userId                String
+  loanId                String?
+  originalTransactionId String?
+  title                 String
+  description           String?
+  type                  TransactionType
+  category              TransactionCategory
+  status                TransactionStatus   @default(SUCCESS)
+  source                TransactionSource   @default(MANUAL)
+  amount                Decimal             @db.Decimal(14, 2)
+  currency              String              @default("INR")
+  merchantName          String?
+  accountLabel          String?
+  referenceNumber       String?
+  externalReference     String?
+  occurredAt            DateTime
+  isDeleted             Boolean             @default(false)
+  deletedAt             DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loan                Loan?               @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  originalTransaction Transaction?        @relation("TransactionRefunds", fields: [originalTransactionId], references: [id], onDelete: SetNull)
+  refunds             Transaction[]       @relation("TransactionRefunds")
+  smsImport           SmsImportCandidate?
+
+  @@unique([userId, externalReference])
+  @@index([userId, occurredAt])
+  @@index([userId, type, occurredAt])
+  @@index([userId, status, occurredAt])
+  @@index([loanId])
+}
+
+model SmsImportCandidate {
+  id              String                @id @default(uuid())
+  userId          String
+  transactionId   String?               @unique
+  deviceMessageId String
+  sender          String
+  source          TransactionSource     @default(SMS)
+  messagePreview  String
+  contentHash     String
+  occurredAt      DateTime
+  type            TransactionType
+  category        TransactionCategory
+  status          TransactionStatus
+  amount          Decimal               @db.Decimal(14, 2)
+  currency        String                @default("INR")
+  merchantName    String?
+  accountLabel    String?
+  referenceNumber String?
+  confidence      Decimal               @db.Decimal(3, 2)
+  reviewStatus    SmsImportReviewStatus @default(PENDING)
+  reviewedAt      DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, deviceMessageId])
+  @@unique([userId, contentHash])
+  @@index([userId, reviewStatus, occurredAt])
+}
+
+model EmailConnection {
+  id                    String                @id @default(uuid())
+  userId                String
+  provider              EmailProvider
+  status                EmailConnectionStatus @default(PENDING)
+  emailAddress          String?
+  accessTokenEncrypted  String?
+  refreshTokenEncrypted String?
+  accessTokenExpiresAt  DateTime?
+  grantedScopes         String?
+  stateNonce            String?
+  stateExpiresAt        DateTime?
+  lastSyncAt            DateTime?
+  lastError             String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([userId, status])
+}
+
+model OtpRequest {
+  id                String    @id @default(uuid())
+  mobile            String
+  otpHash           String
+  expiresAt         DateTime
+  attempts          Int       @default(0)
+  resendCount       Int       @default(0)
+  resendAvailableAt DateTime
+  blockedUntil      DateTime?
+  isVerified        Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  mobile    String?
+  action    String
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
