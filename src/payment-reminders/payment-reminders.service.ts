@@ -252,6 +252,21 @@ export class PaymentRemindersService {
         occurredAt,
       },
     });
+
+    const currentOutstanding = this.decimalToNumber(loan.outstandingAmount);
+    const newOutstanding = this.roundMoney(Math.max(0, currentOutstanding - amount));
+    const newTenure =
+      loan.tenureRemainingMonths && loan.tenureRemainingMonths > 0
+        ? loan.tenureRemainingMonths - 1
+        : loan.tenureRemainingMonths;
+    await this.prisma.loan.update({
+      where: { id: loanId },
+      data: {
+        outstandingAmount: new Prisma.Decimal(newOutstanding),
+        tenureRemainingMonths: newTenure,
+        isActive: newOutstanding > 0,
+      },
+    });
     return {
       created: true,
       transactionId: transaction.id,

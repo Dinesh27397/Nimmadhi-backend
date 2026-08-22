@@ -42,7 +42,7 @@ describe('SmsImportsService', () => {
   };
   const prisma = {
     transaction: {
-      findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     smsImportCandidate: {
       findFirst: jest.fn(),
@@ -56,14 +56,14 @@ describe('SmsImportsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma.transaction.findFirst.mockResolvedValue(null);
+    prisma.transaction.findMany.mockResolvedValue([]);
+    prisma.smsImportCandidate.findMany.mockResolvedValue([]);
     prisma.$transaction.mockImplementation((callback) =>
       Promise.resolve(callback(transactionClient)),
     );
   });
 
   it('auto-imports a high-confidence financial SMS', async () => {
-    prisma.smsImportCandidate.findFirst.mockResolvedValue(null);
     prisma.smsImportCandidate.create.mockResolvedValue(candidate);
     transactionClient.transaction.create.mockResolvedValue({
       id: 'transaction-1',
@@ -105,9 +105,12 @@ describe('SmsImportsService', () => {
   });
 
   it('does not create another candidate for a duplicate SMS', async () => {
-    prisma.smsImportCandidate.findFirst.mockResolvedValue({
-      id: 'candidate-1',
-    });
+    prisma.smsImportCandidate.findMany.mockResolvedValue([
+      {
+        deviceMessageId: 'sms-1',
+        contentHash: 'existing-hash',
+      },
+    ]);
 
     const result = await service.importMessages('user-1', {
       messages: [
@@ -121,6 +124,58 @@ describe('SmsImportsService', () => {
     });
 
     expect(result.duplicates).toBe(1);
+    expect(prisma.smsImportCandidate.create).not.toHaveBeenCalled();
+    expect(transactionClient.transaction.create).not.toHaveBeenCalled();
+  });
+
+  it('checks a large duplicate batch with one candidate query', async () => {
+    const messages = Array.from({ length: 100 }, (_, index) => ({
+      id: `sms-${index}`,
+      sender: 'VK-HDFCBK',
+      body: `Rs 500 debited from A/c XX4567 at Merchant ${index}.`,
+      occurredAt: new Date(now.getTime() + index).toISOString(),
+    }));
+    prisma.smsImportCandidate.findMany.mockImplementation(({ where }) =>
+      Promise.resolve(
+        where.OR[0].deviceMessageId.in.map((deviceMessageId: string) => ({
+          deviceMessageId,
+          contentHash: `existing-${deviceMessageId}`,
+        })),
+      ),
+    );
+
+    const result = await service.importMessages('user-1', { messages });
+
+    expect(result).toMatchObject({
+      received: 100,
+      detected: 100,
+      duplicates: 100,
+      autoImported: 0,
+    });
+    expect(prisma.smsImportCandidate.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.transaction.findMany).not.toHaveBeenCalled();
+    expect(prisma.smsImportCandidate.create).not.toHaveBeenCalled();
+  });
+
+  it('skips an uncertain message instead of asking the user to approve it', async () => {
+    const result = await service.importMessages('user-1', {
+      messages: [
+        {
+          id: 'sms-uncertain',
+          sender: 'UNKNOWN',
+          body: 'Rs 500 debited.',
+          occurredAt: now.toISOString(),
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      received: 1,
+      detected: 0,
+      autoImported: 0,
+      pendingReview: 0,
+      skipped: 1,
+    });
     expect(prisma.smsImportCandidate.create).not.toHaveBeenCalled();
     expect(transactionClient.transaction.create).not.toHaveBeenCalled();
   });

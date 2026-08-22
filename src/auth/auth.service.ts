@@ -12,6 +12,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { decimalToNumber } from '../common/finance/finance-calculations.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SmsService } from './sms.service.js';
+import { FirebaseService } from '../firebase/firebase.service.js';
 import { CompleteProfileDto } from './dto/complete-profile.dto.js';
 
 const OTP_EXPIRY_SECONDS = Number(process.env.OTP_EXPIRES_IN_SECONDS ?? 300);
@@ -49,7 +50,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly smsService: SmsService,
-  ) {}
+    private readonly firebaseService: FirebaseService,
+  ) { }
 
   async requestOtp(mobile: string) {
     const now = new Date();
@@ -188,20 +190,22 @@ export class AuthService {
 
     const user = existingUser
       ? await this.prisma.user.update({
-          where: { mobile },
-          data: profileData,
-        })
+        where: { mobile },
+        data: profileData,
+      })
       : await this.prisma.user.create({
-          data: {
-            mobile,
-            ...profileData,
-          },
-        });
+        data: {
+          mobile,
+          ...profileData,
+        },
+      });
     await this.audit('PROFILE_COMPLETED', { userId: user.id, mobile });
+    const tokens = await this.issueTokens(user.id, user.mobile);
 
     return {
       success: true,
       message: 'Profile completed',
+      ...tokens,
       user: this.toSafeUser(user),
     };
   }
@@ -333,9 +337,9 @@ export class AuthService {
   }
 
   private generateOtp() {
-    if (process.env.NODE_ENV !== 'production') {
-      return '123456';
-    }
+    // if (process.env.NODE_ENV !== 'production') {
+    //   return '123456';
+    // }
 
     return randomInt(0, 1_000_000).toString().padStart(6, '0');
   }
@@ -406,6 +410,51 @@ export class AuthService {
           ? 60 * 60 * 1000
           : 60 * 1000;
     return new Date(Date.now() + value * multiplier);
+  }
+
+
+  async verifyFirebaseToken(idToken: string) {
+    const verified = await this.firebaseService.verifyIdToken(idToken);
+    if (!verified.phoneNumber) {
+      throw new BadRequestException(
+        'Firebase token does not contain a verified phone number',
+      );
+    }
+
+    const mobile = verified.phoneNumber.replace(/\D/g, '').slice(-10);
+    const existingUser = await this.prisma.user.findUnique({
+      where: { mobile },
+    });
+
+    if (!existingUser) {
+      const onboardingToken = await this.jwtService.signAsync(
+        { sub: mobile, mobile, role: 'ONBOARDING' },
+        {
+          secret:
+            process.env.JWT_ONBOARDING_SECRET ??
+            'nimmadhi-onboarding-secret-2026',
+          expiresIn: '1h',
+        },
+      );
+
+      return {
+        success: true,
+        isNewUser: true,
+        nextStep: 'COMPLETE_PROFILE',
+        onboardingToken,
+      };
+    }
+
+    const tokens = await this.issueTokens(existingUser.id, existingUser.mobile);
+    await this.audit('LOGIN_FIREBASE', { userId: existingUser.id, mobile });
+
+    return {
+      success: true,
+      isNewUser: false,
+      nextStep: 'DASHBOARD',
+      ...tokens,
+      user: this.toSafeUser(existingUser),
+    };
   }
 
   private toSafeUser(user: UserRecord) {

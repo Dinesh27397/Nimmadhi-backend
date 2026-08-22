@@ -13,6 +13,7 @@ import { RecommendationsModule } from './recommendations/recommendations.module.
 import { StrategyModule } from './strategy/strategy.module.js';
 import { TransactionsModule } from './transactions/transactions.module.js';
 import { UsersModule } from './users/users.module.js';
+import { FirebaseModule } from './firebase/firebase.module.js';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { UsersModule } from './users/users.module.js';
     StrategyModule,
     TransactionsModule,
     UsersModule,
+    FirebaseModule,
   ],
   controllers: [AppController],
   providers: [AppService],

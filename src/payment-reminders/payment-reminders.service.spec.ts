@@ -24,6 +24,7 @@ describe('PaymentRemindersService', () => {
     loan: {
       findMany: jest.fn<() => Promise<unknown>>(),
       findFirst: jest.fn<() => Promise<unknown>>(),
+      update: jest.fn<() => Promise<unknown>>(),
     },
     transaction: {
       findMany: jest.fn<() => Promise<unknown>>(),

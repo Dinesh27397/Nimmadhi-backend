@@ -67,6 +67,42 @@ describe('parseFinancialSms', () => {
     ).toBeNull();
   });
 
+  it('ignores offers, payment requests, due reminders, and failed payments', () => {
+    const bodies = [
+      'Special offer: get cashback of Rs 500 when you shop today.',
+      'Payment request received for INR 750 from Store. Open the app to pay.',
+      'Your credit card minimum due is Rs 2,500. Pay before the due date.',
+      'Payment of Rs 900 at Cafe was declined.',
+    ];
+
+    for (const [index, body] of bodies.entries()) {
+      expect(
+        parseFinancialSms({
+          id: `non-transaction-${index}`,
+          sender: 'HDFCBK',
+          body,
+          occurredAt: '2026-07-21T08:30:00.000Z',
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it('detects a completed transfer from a recognized financial sender', () => {
+    const result = parseFinancialSms({
+      id: 'sms-transfer',
+      sender: 'VM-SBIBNK',
+      body: 'INR 500 transferred from your account to Ravi.',
+      occurredAt: '2026-07-21T08:30:00.000Z',
+    });
+
+    expect(result).toMatchObject({
+      amount: 500,
+      type: TransactionType.PAYMENT,
+      status: 'SUCCESS',
+    });
+    expect(result?.confidence).toBeGreaterThanOrEqual(0.65);
+  });
+
   it('redacts long numeric identifiers from the stored preview', () => {
     const result = parseFinancialSms({
       id: 'sms-6',

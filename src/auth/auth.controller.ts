@@ -10,7 +10,10 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
-import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
+import type {
+  AuthenticatedUser,
+  OnboardingUser,
+} from '../common/decorators/current-user.decorator.js';
 import { AuthService } from './auth.service.js';
 import { CompleteProfileDto } from './dto/complete-profile.dto.js';
 import { LoginPinDto } from './dto/login-pin.dto.js';
@@ -18,7 +21,9 @@ import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { RequestOtpDto } from './dto/request-otp.dto.js';
 import { SetPinDto } from './dto/set-pin.dto.js';
 import { VerifyOtpDto } from './dto/verify-otp.dto.js';
+import { FirebaseVerifyDto } from './dto/firebase-verify.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { OnboardingAuthGuard } from './guards/onboarding-auth.guard.js';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -89,7 +94,20 @@ export class AuthController {
     return this.authService.verifyOtp(dto.mobile, dto.otp);
   }
 
+  
+  @Post('firebase-verify')
+  @ApiOperation({ summary: 'Login or onboard using Firebase Phone Auth ID token' })
+  @ApiBody({ type: FirebaseVerifyDto })
+  @ApiOkResponse({
+    description: 'Returns either dashboard tokens or onboarding token.',
+  })
+  firebaseVerify(@Body() dto: FirebaseVerifyDto) {
+    return this.authService.verifyFirebaseToken(dto.idToken);
+  }
+
   @Post('complete-profile')
+  @UseGuards(OnboardingAuthGuard)
+  @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Complete onboarding profile' })
   @ApiBody({ type: CompleteProfileDto })
   @ApiOkResponse({
@@ -98,6 +116,8 @@ export class AuthController {
       example: {
         success: true,
         message: 'Profile completed',
+        accessToken: 'ey...',
+        refreshToken: 'ey...',
         user: {
           id: 'uuid',
           mobile: '9876543210',
@@ -110,8 +130,14 @@ export class AuthController {
       },
     },
   })
-  completeProfile(@Body() dto: CompleteProfileDto) {
-    return this.authService.completeProfile(dto);
+  completeProfile(
+    @Body() dto: CompleteProfileDto,
+    @CurrentUser() onboarding: OnboardingUser,
+  ) {
+    return this.authService.completeProfile({
+      ...dto,
+      mobile: onboarding.mobile,
+    });
   }
 
   @Post('set-pin')

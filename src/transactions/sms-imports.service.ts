@@ -15,8 +15,12 @@ import { ImportSmsDto } from './dto/import-sms.dto.js';
 import { ReviewSmsImportDto } from './dto/review-sms-import.dto.js';
 import { SmsImportQueryDto } from './dto/sms-import-query.dto.js';
 import { parseFinancialSms } from './sms-transaction-parser.js';
+import type { ParsedSmsTransaction } from './sms-transaction-parser.js';
 
-const AUTO_IMPORT_CONFIDENCE = 0.85;
+// A valid action and amount are required by the parser. One additional signal
+// (financial sender, reference, account, merchant, EMI or refund) makes the
+// message safe to import without asking the user to classify it.
+const MIN_AUTO_IMPORT_CONFIDENCE = 0.65;
 
 @Injectable()
 export class SmsImportsService {
@@ -36,44 +40,94 @@ export class SmsImportsService {
       skipped: 0,
       candidates: [] as ReturnType<typeof this.toResponse>[],
     };
+    const parsedMessages: ParsedSmsTransaction[] = [];
+    const batchMessageIds = new Set<string>();
+    const batchContentHashes = new Set<string>();
+    const batchReferences = new Set<string>();
 
     for (const message of dto.messages) {
       const parsed = parseFinancialSms(message);
-      if (!parsed) {
+      if (!parsed || parsed.confidence < MIN_AUTO_IMPORT_CONFIDENCE) {
         result.skipped += 1;
         continue;
       }
       result.detected += 1;
 
-      if (parsed.referenceNumber) {
-        const existingTransaction = await this.prisma.transaction.findFirst({
-          where: {
-            userId,
-            isDeleted: false,
-            referenceNumber: {
-              equals: parsed.referenceNumber,
-              mode: 'insensitive',
-            },
-          },
-          select: { id: true },
-        });
-        if (existingTransaction) {
-          result.duplicates += 1;
-          continue;
-        }
+      const normalizedReference = parsed.referenceNumber?.toLowerCase();
+      if (
+        batchMessageIds.has(parsed.deviceMessageId) ||
+        batchContentHashes.has(parsed.contentHash) ||
+        (normalizedReference && batchReferences.has(normalizedReference))
+      ) {
+        result.duplicates += 1;
+        continue;
       }
 
-      const duplicate = await this.prisma.smsImportCandidate.findFirst({
+      batchMessageIds.add(parsed.deviceMessageId);
+      batchContentHashes.add(parsed.contentHash);
+      if (normalizedReference) batchReferences.add(normalizedReference);
+      parsedMessages.push(parsed);
+    }
+
+    if (parsedMessages.length === 0) {
+      return result;
+    }
+
+    const referenceNumbers = parsedMessages
+      .map((parsed) => parsed.referenceNumber)
+      .filter((value): value is string => Boolean(value));
+    const [existingTransactions, existingCandidates] = await Promise.all([
+      referenceNumbers.length
+        ? this.prisma.transaction.findMany({
+            where: {
+              userId,
+              isDeleted: false,
+              referenceNumber: {
+                in: referenceNumbers,
+                mode: 'insensitive',
+              },
+            },
+            select: { referenceNumber: true },
+          })
+        : Promise.resolve([]),
+      this.prisma.smsImportCandidate.findMany({
         where: {
           userId,
           OR: [
-            { deviceMessageId: parsed.deviceMessageId },
-            { contentHash: parsed.contentHash },
+            {
+              deviceMessageId: {
+                in: parsedMessages.map((parsed) => parsed.deviceMessageId),
+              },
+            },
+            {
+              contentHash: {
+                in: parsedMessages.map((parsed) => parsed.contentHash),
+              },
+            },
           ],
         },
-        select: { id: true },
-      });
-      if (duplicate) {
+        select: { deviceMessageId: true, contentHash: true },
+      }),
+    ]);
+    const existingReferences = new Set(
+      existingTransactions
+        .map((transaction) => transaction.referenceNumber?.toLowerCase())
+        .filter((value): value is string => Boolean(value)),
+    );
+    const existingMessageIds = new Set(
+      existingCandidates.map((candidate) => candidate.deviceMessageId),
+    );
+    const existingContentHashes = new Set(
+      existingCandidates.map((candidate) => candidate.contentHash),
+    );
+
+    for (const parsed of parsedMessages) {
+      if (
+        existingMessageIds.has(parsed.deviceMessageId) ||
+        existingContentHashes.has(parsed.contentHash) ||
+        (parsed.referenceNumber &&
+          existingReferences.has(parsed.referenceNumber.toLowerCase()))
+      ) {
         result.duplicates += 1;
         continue;
       }
@@ -88,16 +142,12 @@ export class SmsImportsService {
           },
         });
 
-        if (parsed.confidence >= AUTO_IMPORT_CONFIDENCE) {
-          candidate = await this.createTransaction(
-            userId,
-            candidate,
-            SmsImportReviewStatus.AUTO_IMPORTED,
-          );
-          result.autoImported += 1;
-        } else {
-          result.pendingReview += 1;
-        }
+        candidate = await this.createTransaction(
+          userId,
+          candidate,
+          SmsImportReviewStatus.AUTO_IMPORTED,
+        );
+        result.autoImported += 1;
         result.candidates.push(this.toResponse(candidate));
       } catch (error) {
         if (

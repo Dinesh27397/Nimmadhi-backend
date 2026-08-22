@@ -24,16 +24,22 @@ export type ParsedSmsTransaction = {
 };
 
 const financialWords =
-  /\b(debit(?:ed)?|credit(?:ed)?|spent|paid|payment|purchase|txn|transaction|refund(?:ed)?|cashback|emi|withdrawn|received)\b/i;
+  /\b(debited|credited|spent|paid|purchased|withdrawn|received|transferred|sent|deposited|refunded|reversed)\b/i;
 const otpWords = /\b(otp|one[ -]?time password|verification code)\b/i;
+const nonTransactionWords =
+  /\b(offer|eligible|pre[ -]?approved|apply now|coupon|promo(?:tion)?|reward points?|payment request|collect request|requested|due date|minimum due|bill due|failed|declined|unsuccessful)\b/i;
 const bankSender =
-  /(bank|hdfc|sbi|icici|axis|kotak|indus|yesbnk|canara|union|bob|paytm|phonepe|amazon)/i;
+  /(bank|hdfc|sbi|icici|axis|kotak|indus|yesbnk|canara|union|bob|pnb|idfc|federal|rbl|paytm|phonepe|gpay|googlepay|amazonpay|bhim)/i;
 
 export function parseFinancialSms(
   message: SmsMessageDto,
 ): ParsedSmsTransaction | null {
   const body = message.body.replace(/\s+/g, ' ').trim();
-  if (!financialWords.test(body) || otpWords.test(body)) {
+  if (
+    !financialWords.test(body) ||
+    otpWords.test(body) ||
+    nonTransactionWords.test(body)
+  ) {
     return null;
   }
 
@@ -51,7 +57,6 @@ export function parseFinancialSms(
   const isRefund = /\b(refund(?:ed)?|cashback|reversal|reversed)\b/i.test(body);
   const isCredit = /\b(credit(?:ed)?|received)\b/i.test(body);
   const isEmi = /\b(emi|loan instal+ment|loan payment)\b/i.test(body);
-  const failed = /\b(failed|declined|unsuccessful)\b/i.test(body);
   const type =
     isRefund || (isCredit && !isEmi)
       ? TransactionType.REFUND
@@ -91,7 +96,7 @@ export function parseFinancialSms(
     occurredAt: new Date(message.occurredAt),
     type,
     category,
-    status: failed ? TransactionStatus.FAILED : TransactionStatus.SUCCESS,
+    status: TransactionStatus.SUCCESS,
     amount,
     currency: 'INR',
     merchantName,

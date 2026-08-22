@@ -46,8 +46,8 @@ async function bootstrap() {
     customSiteTitle: 'Nimmadhi API Docs',
   });
 
-  await app.listen(process.env.PORT ?? 3000);
-  console.log(`Nimmadhi API running on port ${process.env.PORT ?? 3000}`);
+  await app.listen(process.env.PORT ?? 5000);
+  console.log(`Nimmadhi API running on port ${process.env.PORT ?? 5000}`);
 }
 
 bootstrap().catch((err) => {
