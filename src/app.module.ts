@@ -15,6 +15,7 @@ import { TransactionsModule } from './transactions/transactions.module.js';
 import { UsersModule } from './users/users.module.js';
 import { FirebaseModule } from './firebase/firebase.module.js';
 import { AchievementsModule } from './achievements/achievements.module.js';
+import { AiModule } from './ai/ai.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AchievementsModule } from './achievements/achievements.module.js';
     UsersModule,
     FirebaseModule,
     AchievementsModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
