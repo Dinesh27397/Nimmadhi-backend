@@ -25,10 +25,7 @@ export class DashboardService {
       monthlyIncome - monthlyEssentialExpenses - totalMonthlyEmi,
     );
     const extraPayment = Math.min(freeCashAfterEssentials * 0.2, 5000);
-    const debtFreeMonths =
-      totalDebt === 0 || totalMonthlyEmi + extraPayment <= 0
-        ? 0
-        : Math.ceil(totalDebt / (totalMonthlyEmi + extraPayment));
+    const debtFreeMonths = this.calculateMaxDebtFreeMonths(user.loans);
 
     return {
       success: true,
@@ -252,4 +249,33 @@ export class DashboardService {
       tenureRemainingMonths: loan.tenureRemainingMonths,
     };
   }
+
+  private calculateMaxDebtFreeMonths(loans: any[]): number {
+    if (!loans || loans.length === 0) return 0;
+    let maxMonths = 0;
+
+    for (const loan of loans) {
+      const outstanding = this.decimalToNumber(loan.outstandingAmount);
+      const emi = this.decimalToNumber(loan.monthlyEmi);
+      const rate = this.decimalToNumber(loan.interestRate);
+
+      if (loan.tenureRemainingMonths && loan.tenureRemainingMonths > 0) {
+        maxMonths = Math.max(maxMonths, loan.tenureRemainingMonths);
+      } else if (outstanding > 0 && emi > 0) {
+        const ratePerMonth = (rate > 0 ? rate : 0) / 12 / 100;
+        let balance = outstanding;
+        let months = 0;
+        while (balance > 0 && months < 600) {
+          months += 1;
+          const interest = ratePerMonth > 0 ? balance * ratePerMonth : 0;
+          const principalPaid = Math.min(balance, Math.max(1, emi - interest));
+          balance -= principalPaid;
+        }
+        maxMonths = Math.max(maxMonths, months);
+      }
+    }
+
+    return maxMonths;
+  }
+
 }
