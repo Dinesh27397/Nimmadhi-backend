@@ -34,6 +34,7 @@ model User {
   emailConnections          EmailConnection[]
   paymentReminderPreference PaymentReminderPreference?
   loanReminderPreferences   LoanReminderPreference[]
+  achievements              UserAchievement[]
 }
 
 enum LoanType {
@@ -285,4 +286,19 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id])
+}
+
+model UserAchievement {
+  id         String   @id @default(uuid())
+  userId     String
+  badgeKey   String
+  unlockedAt DateTime @default(now())
+  seen       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeKey])
+  @@index([userId])
 }

@@ -14,6 +14,7 @@ import { StrategyModule } from './strategy/strategy.module.js';
 import { TransactionsModule } from './transactions/transactions.module.js';
 import { UsersModule } from './users/users.module.js';
 import { FirebaseModule } from './firebase/firebase.module.js';
+import { AchievementsModule } from './achievements/achievements.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { FirebaseModule } from './firebase/firebase.module.js';
     TransactionsModule,
     UsersModule,
     FirebaseModule,
+    AchievementsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
