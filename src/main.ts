@@ -51,7 +51,7 @@ async function bootstrap() {
     customSiteTitle: 'Nimmadhi API Docs',
   });
 
-  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
   await app.listen(port);
   console.log(`Nimmadhi API running on port ${port}`);
 }
