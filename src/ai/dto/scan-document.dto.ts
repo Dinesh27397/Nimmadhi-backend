@@ -1,9 +1,17 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 export class ScanStatementRequestDto {
   @IsString()
-  @IsNotEmpty()
-  imageBase64: string;
+  @IsOptional()
+  imageBase64?: string;
+
+  @IsString()
+  @IsOptional()
+  documentText?: string;
+
+  @IsString()
+  @IsOptional()
+  fileName?: string;
 
   @IsString()
   @IsOptional()

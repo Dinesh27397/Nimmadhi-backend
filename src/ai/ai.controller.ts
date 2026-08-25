@@ -4,10 +4,11 @@ import {
   HttpCode,
   HttpStatus,
   Post,
-  Request,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../common/decorators/current-user.decorator.js';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { AiService } from './ai.service.js';
 import { AiChatRequestDto, AiChatResponseDto } from './dto/ai-chat.dto.js';
@@ -17,7 +18,7 @@ import {
 } from './dto/scan-document.dto.js';
 
 @ApiTags('ai')
-@ApiBearerAuth()
+@ApiBearerAuth('JWT')
 @UseGuards(JwtAuthGuard)
 @Controller('ai')
 export class AiController {
@@ -28,10 +29,11 @@ export class AiController {
   @ApiOperation({ summary: 'Chat with context-aware Gemini AI Financial Copilot' })
   @ApiResponse({ status: 200, type: AiChatResponseDto })
   async chatWithCopilot(
-    @Request() req: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() dto: AiChatRequestDto,
   ): Promise<AiChatResponseDto> {
-    return this.aiService.chatWithCopilot(req.user.id, dto);
+    const userId = user?.sub || (user as any)?.id;
+    return this.aiService.chatWithCopilot(userId, dto);
   }
 
   @Post('scan-statement')
@@ -39,9 +41,10 @@ export class AiController {
   @ApiOperation({ summary: 'Extract loan and bill details via Gemini Vision OCR' })
   @ApiResponse({ status: 200, type: ScanStatementResponseDto })
   async scanStatement(
-    @Request() req: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ScanStatementRequestDto,
   ): Promise<ScanStatementResponseDto> {
-    return this.aiService.scanStatement(req.user.id, dto);
+    const userId = user?.sub || (user as any)?.id;
+    return this.aiService.scanStatement(userId, dto);
   }
 }

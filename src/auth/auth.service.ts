@@ -359,14 +359,14 @@ export class AuthService {
       { sub: userId, mobile },
       {
         secret: process.env.JWT_SECRET ?? 'dev-access-secret',
-        expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ?? '15m') as never,
+        expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ?? '30d') as never,
       },
     );
     const refreshToken = await this.jwtService.signAsync(
       { sub: userId, mobile },
       {
         secret: process.env.JWT_REFRESH_SECRET ?? 'dev-refresh-secret',
-        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ?? '7d') as never,
+        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ?? '365d') as never,
       },
     );
 
@@ -395,7 +395,7 @@ export class AuthService {
   }
 
   private getRefreshExpiryDate() {
-    const expiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+    const expiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '365d';
     const match = /^(\d+)([dhm])$/.exec(expiresIn);
     if (!match) {
       return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
